@@ -1,0 +1,34 @@
+# k8s/upload-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upload-service
+  namespace: converter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: upload-service
+  template:
+    metadata:
+      labels:
+        app: upload-service
+    spec:
+      containers:
+        - name: upload-service
+          image: mpxupd/upload-service:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: KAFKA_BROKER
+              value: "kafka:9092"
+          envFrom:
+            - secretRef:
+                name: aws-credentials
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"

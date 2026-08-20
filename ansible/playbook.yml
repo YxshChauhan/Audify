@@ -1,0 +1,92 @@
+# ansible/playbook.yml
+---
+- hosts: converter
+  become: true
+  vars:
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"  # set in environment
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"  # set in environment
+    aws_region: "us-east-1"
+    s3_bucket: "video-audio-converter-yourname-2024"
+
+  tasks:
+
+    # ---------- System update ----------
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    # ---------- Install Docker ----------
+    - name: Install Docker dependencies
+      apt:
+        name: [apt-transport-https, ca-certificates, curl, gnupg, lsb-release]
+        state: present
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+        state: present
+
+    - name: Install Docker
+      apt:
+        name: [docker-ce, docker-ce-cli, containerd.io]
+        state: present
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Start and enable Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # ---------- Install k3s (lightweight Kubernetes) ----------
+    - name: Install k3s
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for k3s to be ready
+      shell: k3s kubectl get nodes
+      register: k3s_status
+      retries: 10
+      delay: 10
+      until: k3s_status.rc == 0
+
+    - name: Copy kubeconfig for ubuntu user
+      shell: |
+        mkdir -p /home/ubuntu/.kube
+        cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+        chown ubuntu:ubuntu /home/ubuntu/.kube/config
+        sed -i 's/127.0.0.1/{{ ansible_host }}/g' /home/ubuntu/.kube/config
+
+    # ---------- Create Kubernetes secret for AWS credentials ----------
+    - name: Create AWS credentials secret in k8s
+      shell: |
+        k3s kubectl create secret generic aws-credentials \
+          --from-literal=AWS_ACCESS_KEY_ID={{ aws_access_key }} \
+          --from-literal=AWS_SECRET_ACCESS_KEY={{ aws_secret_key }} \
+          --from-literal=AWS_REGION={{ aws_region }} \
+          --from-literal=S3_BUCKET={{ s3_bucket }} \
+          --dry-run=client -o yaml | k3s kubectl apply -f -
+
+    - name: Copy k8s manifests to server
+      copy:
+        src: ../k8s/
+        dest: /home/ubuntu/k8s/
+        owner: ubuntu
+        mode: '0644'
+
+    # ---------- Apply all manifests ----------
+    - name: Apply Kubernetes manifests
+      shell: sudo k3s kubectl apply -f /home/ubuntu/k8s/
+      become: true

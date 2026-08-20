@@ -1,0 +1,32 @@
+# k8s/converter-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: converter-service
+  namespace: converter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: converter-service
+  template:
+    metadata:
+      labels:
+        app: converter-service
+    spec:
+      containers:
+        - name: converter-service
+          image: mpxupd/converter-service:latest
+          env:
+            - name: KAFKA_BROKER
+              value: "kafka:9092"
+          envFrom:
+            - secretRef:
+                name: aws-credentials
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

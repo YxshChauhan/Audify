@@ -1,0 +1,16 @@
+# k8s/service.yaml
+# NodePort exposes the upload service on port 30080
+# You access your app at http://YOUR_EC2_IP:30080
+apiVersion: v1
+kind: Service
+metadata:
+  name: upload-service
+  namespace: converter
+spec:
+  type: NodePort
+  selector:
+    app: upload-service
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30080    # <-- this is your public port
